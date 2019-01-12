@@ -1,0 +1,273 @@
+<!-- Developed by Alex Katona -->
+<!-- MIT License -->
+<!-- Check out alexkatona.blogspot.com for more info -->
+
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+h1, h3 {font-family: Verdana;}
+
+.bg {
+  fill: rgba(0, 0, 0, 0.54);
+  font: 80px sans-serif;
+  text-anchor: middle;
+  opacity: 1;}
+
+#svgwrapper {position: relative;}
+
+.overlay {
+  font-family: Verdana;
+  font: 18px;
+  position: absolute;
+  padding: 4px;
+  border: 1px solid gray;
+  border-radius: 4px;
+  background-color: lightblue;
+  max-width: 1000px;
+  vertical-align: middle;
+  pointer-events: none;}
+
+.node circle {
+  fill: rgb(153, 153, 153);
+  pointer-events: none;}
+
+.node text {
+  font: 10px sans-serif;
+  fill: rgba(0, 0, 0);}
+
+.node--internal circle {
+  fill: rgb(85, 85, 85);
+  pointer-events: none;}
+
+.node--internal text {
+  text-shadow: 1px 1px 1px rgb(255, 255, 255);
+  pointer-events: none;}
+
+.link {
+  fill: none;
+  stroke: rgb(85, 85, 85);
+  stroke-opacity: 0.4;
+  stroke-width: 1.5px;}
+
+.button {
+  background-color: rgba(#5287f1, 0.55);
+  border: none;
+  margin-left:7px;
+  color: rgb(60, 54, 64);
+  padding: 8px 15px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  font-family: Verdana;
+}
+
+</style>
+<body>
+  <h1>
+    The Future of Government - Developed by <a href="http://alexkatona.blogspot.com/">Alex Katona</a>
+  </h1>
+  <h3>
+    What is the future of government? The visualization below maps the new innovations <br> and developments that will influence governance and society in the future.
+  </h3>
+  <h2><i>Hover over a label to highlight a path. Click a label to show more details. Scroll to zoom in and click + drag to pan. </i></h2>
+  <button class=button onclick="openFullscreen();">Click for fullscreen mode</button><button class=button id=Reset>Click to reset zoom</button><button class=button onclick="exitFullscreen();">Click to exit fullscreen mode</button>
+  <div id = "svgwrapper">
+    <svg width="1170" height="1100">
+      <text class="bg" x="580" y="425" id="bg_row1"></text>
+      <text class="bg" x="580" y="525" id="bg_row2"></text>
+      <text class="bg" x="580" y="625" id="bg_row3"></text>
+      <text class="bg" x="580" y="725" id="bg_row4"></text>
+      <text class="bg" x="580" y="825" id="bg_row5"></text>
+    </svg>
+  </div>
+</body>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+'use strict';
+var svg = d3.select("svg");
+var width = +svg.attr("width");
+var height = +svg.attr("height");
+var g = svg.append("g").attr("transform", "translate(" + (width / 2 - 15) + "," + (height / 2 + 25) + ")");
+var svgPosition = document.getElementById("svgwrapper");
+var overlay = d3.select("body")
+                .append("div")
+                .attr("class", "overlay")
+                .style("opacity", 0);
+var zoom = d3.zoom()
+             .scaleExtent([1, 2])
+             .on("zoom", zoomed);
+var transform = d3.zoomIdentity
+                  .translate(width / 2, height / 2)
+                  .scale(1);
+var stratify = d3.stratify()
+                 .parentId(function(d) { return d.id.substring(0, d.id.lastIndexOf(".")); });
+var tree = d3.cluster()
+             .size([360, 390])
+             .separation(function(a, b) { return (a.parent == b.parent ? 1 : 2) / a.depth; });
+var elem = document.documentElement;
+svg.call(zoom)
+   .call(zoom.transform, transform);
+d3.select("#Reset")
+  .on("click", function(){
+      svg.call(zoom)
+         .call(zoom.transform, transform);});
+
+d3.csv("WDVP_Future_Govt_data.csv", function(error, data) {
+  if (error) throw error;
+
+  var root = tree(stratify(data)
+            .sort(function(a, b) { return (a.height - b.height) || a.id.localeCompare(b.id); }));
+  var link = g.selectAll(".link")
+              .data(root.descendants().slice(1))
+              .enter().append("path")
+              .attr("class", "link")
+              .attr("d", function(d) {
+                      return "M" + project(d.x, d.y)
+                          + "C" + project(d.x, (d.y + d.parent.y) / 2)
+                          + " " + project(d.parent.x, (d.y + d.parent.y) / 2)
+                          + " " + project(d.parent.x, d.parent.y);});
+  var node = g.selectAll(".node")
+              .data(root.descendants())
+              .enter().append("g")
+              .attr("class", function(d) { return "node" + (d.children ? " node--internal" : " node--leaf"); })
+              .attr("transform", function(d) { return "translate(" + project(d.x, d.y) + ")"; });
+  node.append("circle")
+      .attr("r", 2.5)
+      .call(d3.drag()
+              .on("start", dragstarted)
+              .on("drag", dragged)
+              .on("end", dragended));
+  node.append("text")
+      .attr("dy", ".31em")
+      .attr("class", "node--text")
+      .attr("x", function(d) { return d.x < 180 === !d.children ? 6 : -6; })
+      .style("text-anchor", function(d) { return d.x < 180 === !d.children ? "start" : "end"; })
+      .attr("transform", function(d) { return "rotate(" + (d.x < 180 ? d.x - 90 : d.x + 90) + ")"; })
+      .text(function(d) { return d.id.substring(d.id.lastIndexOf(".") + 1); });
+  node.on("mouseover", function(d){
+        var that = this;
+        g.selectAll(".link")
+         .transition("link_highlight")
+         .duration(5)
+         .style("stroke",function(d){
+            return (d.data.id ==that.__data__.id.substring(0,that.__data__.id.lastIndexOf("."))
+            || d.data.id ==that.__data__.id.substring(0,that.__data__.id.indexOf(".",21))
+            || d.data.id ==that.__data__.id
+            ) ? "rgb(236, 81, 0)" : "#555" ;})
+         .style("stroke-opacity", function(d){
+            return (d.data.id ==that.__data__.id.substring(0,that.__data__.id.lastIndexOf("."))
+            || d.data.id ==that.__data__.id.substring(0,that.__data__.id.indexOf(".",21))
+            || d.data.id ==that.__data__.id
+            ) ? "0.8" : "0.1" ;})
+         .style("stroke-width",function(d){
+            return (d.data.id ==that.__data__.id.substring(0,that.__data__.id.lastIndexOf("."))
+            || d.data.id ==that.__data__.id.substring(0,that.__data__.id.indexOf(".",21))
+            || d.data.id ==that.__data__.id
+            ) ? "12px" : "1.5px" ;});
+        g.selectAll(".node--text")
+         .filter(function(d) {return d.data.id !=that.__data__.id.substring(0,that.__data__.id.lastIndexOf("."))
+             && d.data.id != that.__data__.id.substring(0,that.__data__.id.indexOf(".",21))
+             && d.data.id != that.__data__.id.substring(0,that.__data__.id.indexOf(".",0))
+             && d.data.id != that.__data__.id;})
+         .transition("text_highlight")
+         .duration(5)
+         .style("fill","rgba(0, 0, 0, 0.3)");
+        g.selectAll(".node circle")
+         .filter(function(d) {return d.data.id !=that.__data__.id.substring(0,that.__data__.id.lastIndexOf("."))
+             && d.data.id != that.__data__.id.substring(0,that.__data__.id.indexOf(".",21))
+             && d.data.id != that.__data__.id;})
+         .transition("node_highlight")
+         .duration(5)
+         .style("fill","rgba(0, 0, 0, 0.1)");
+        d3.selectAll(".bg")
+          .style("opacity","1");
+        var text_data = that.__data__.data["Innovation / Development"].split(" ");
+        d3.select("#bg_row1")
+          .text(text_data[0]);
+        d3.select("#bg_row2")
+          .text(text_data[1]);
+        d3.select("#bg_row3")
+          .text(text_data[2]);
+        d3.select("#bg_row4")
+          .text(text_data[3]);
+        d3.select("#bg_row5")
+          .text(text_data[4]);})
+      .on("mouseout", function(d){
+         g.selectAll(".link")
+          .transition("link_dehighlight")
+          .duration(5)
+          .style("stroke","#555")
+          .style("stroke-opacity","0.4")
+          .style("stroke-width", "1.5px");
+         g.selectAll(".node--text")
+          .transition("text_dehighlight")
+          .duration(5)
+          .style("fill","rgba(0, 0, 0, 0.8)");
+         g.selectAll(".node circle")
+          .transition("node_dehighlight")
+          .duration(5)
+          .style("fill","rgb(153, 153, 153)");
+        d3.selectAll(".bg")
+          .style("opacity","0");
+        overlay.transition("fade_overlay")
+               .duration(350)
+               .style("opacity","0");})
+      .on("click", function(d){
+        var that = this;
+        var empty = function(column){
+            if(that.__data__.data[column] === ""){return ""
+            } else {
+                return "<br/><strong>" + column.toString() +"</strong>: " + that.__data__.data[column]
+            }};
+        var nav = "<strong>" + that.__data__.data.Category + " > " + that.__data__.data.type + " > " + that.__data__.data["Innovation / Development"] + "</strong><br/>";
+        var row1 = empty("Now")
+        var row2 = empty("2020")
+        var row3 = empty("2020 to 2030")
+        var row4 = empty("2030")
+        var row5 = empty("2050")
+        var row6 = empty("Beyond")
+        overlay.style("opacity","1")
+               .html(nav + row1 + row2 + row3 + row4 + row5 + row6 + "<br/><strong> Source:</strong> " + that.__data__.data["Source"])
+               .style("top", svgPosition.offsetTop + 300 + "px")
+               .style("left", svgPosition.offsetLeft + 10 + "px");});
+});
+
+function project(x, y) {
+  var angle = (x - 90) / 180 * Math.PI, radius = y;
+  return [radius * Math.cos(angle), radius * Math.sin(angle)];}
+function dragstarted(d) {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x;
+  d.fy = d.y;}
+function dragged(d) {
+  d.fx = d3.event.x;
+  d.fy = d3.event.y;}
+function dragended(d) {
+  if (!d3.event.active) simulation.alphaTarget(0);
+  d.fx = null;
+  d.fy = null;}
+function zoomed() {
+  g.attr("transform", d3.event.transform);}
+function openFullscreen() {
+  if (elem.requestFullscreen) {
+    elem.requestFullscreen();
+  } else if (elem.mozRequestFullScreen) {
+    elem.mozRequestFullScreen();
+  } else if (elem.webkitRequestFullscreen) {
+    elem.webkitRequestFullscreen();
+  } else if (elem.msRequestFullscreen) {
+    elem.msRequestFullscreen();}}
+function closeFullscreen() {
+  if (document.exitFullscreen) {
+    document.exitFullscreen();
+  } else if (document.mozCancelFullScreen) { /* Firefox */
+    document.mozCancelFullScreen();
+  } else if (document.webkitExitFullscreen) { /* Chrome, Safari and Opera */
+    document.webkitExitFullscreen();
+  } else if (document.msExitFullscreen) { /* IE/Edge */
+    document.msExitFullscreen();}}
+</script>
+<!-- Reference: https://bl.ocks.org/mbostock/4339607 -->
+<!-- Reference: https://www.w3schools.com/howto/howto_js_fullscreen.asp -->
